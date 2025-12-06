@@ -1,0 +1,14 @@
+project_name: crp-loader
+
+builds:
+  - main: ./cmd/main.go
+    goos:
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
