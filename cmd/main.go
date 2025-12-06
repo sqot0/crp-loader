@@ -54,6 +54,7 @@ func main() {
 		if err := install(downloadURL); err != nil {
 			fmt.Println("Ошибка установки:", err)
 		}
+		break
 	}
 }
 
@@ -130,5 +131,10 @@ func install(downloadURL string) error {
 	fmt.Println("OK")
 
 	fmt.Println("Готово! Сборка установлена.")
+
+	if _, readerErr := reader.ReadString('\n'); readerErr != nil {
+		// ignore
+	}
+
 	return nil
 }
