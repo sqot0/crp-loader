@@ -56,6 +56,10 @@ func main() {
 		}
 		break
 	}
+
+	if _, readerErr := reader.ReadString('\n'); readerErr != nil {
+		// ignore
+	}
 }
 
 func install(downloadURL string) error {
@@ -136,10 +140,6 @@ func install(downloadURL string) error {
 	fmt.Println("OK")
 
 	fmt.Println("Готово! Сборка установлена.")
-
-	if _, readerErr := reader.ReadString('\n'); readerErr != nil {
-		// ignore
-	}
 
 	return nil
 }
