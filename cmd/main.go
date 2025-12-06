@@ -60,7 +60,12 @@ func main() {
 
 func install(downloadURL string) error {
 	reader := bufio.NewReader(os.Stdin)
-	mcDir := "./"
+
+	executable, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	mcDir := path.Dir(executable)
 
 	if err := os.RemoveAll(path.Join(mcDir, "mods")); err != nil {
 		// ignore
