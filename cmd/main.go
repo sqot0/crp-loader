@@ -15,44 +15,75 @@ import (
 func main() {
 	reader := bufio.NewReader(os.Stdin)
 
-	packs := map[string]string{
-		"1": "https://pub-7ac6523b994b44f9b233ee0cbd3afccc.r2.dev/main.zip",
-		"2": "https://pub-7ac6523b994b44f9b233ee0cbd3afccc.r2.dev/war.zip",
+	packs := []string{
+		"https://pub-7ac6523b994b44f9b233ee0cbd3afccc.r2.dev/main.zip",
+		"https://pub-7ac6523b994b44f9b233ee0cbd3afccc.r2.dev/war.zip",
+	}
+
+	executable, err := os.Executable()
+	if err != nil {
+		fmt.Println("Ошибка определения пути:", err)
+		return
+	}
+	mcDir := path.Dir(executable)
+
+	localPacks := []string{}
+
+	for _, packURL := range packs {
+		localFile := path.Join(mcDir, path.Base(packURL))
+		if _, err := os.Stat(localFile); err == nil {
+			localPacks = append(localPacks, localFile)
+		}
 	}
 
 	for {
 		internal.ClearScreen()
 
-		fmt.Println("==============================")
-		fmt.Println("  Minecraft Pack Installer")
-		fmt.Println("==============================")
-		fmt.Println("")
+		fmt.Println("   ____ ____  ____    _     ___    _    ____  _____ ____")
+		fmt.Println("  / ___|  _ \\|  _ \\  | |   / _ \\  / \\  |  _ \\| ____|  _ \\")
+		fmt.Println(" | |   | |_) | |_) | | |  | | | |/ _ \\ | | | |  _| | |_) |")
+		fmt.Println(" | |___|  _ <|  __/  | |__| |_| / ___ \\| |_| | |___|  _ <")
+		fmt.Println("  \\____|_| \\_\\_|     |_____\\___/_/   \\_\\____/|_____|_| \\_\\")
+		fmt.Print("\n\n")
 		fmt.Println("Выберите сборку:")
 		fmt.Println("")
 		fmt.Println("1) Основная сборка")
 		fmt.Println("2) Военная сборка")
+		for i, name := range localPacks {
+			fmt.Printf("%d) %s (Локально)\n", len(packs)+i+1, name)
+		}
 		fmt.Println("")
 		fmt.Print("Введите номер: ")
 
-		modpackChoice, err := reader.ReadString('\n')
+		userInput, err := reader.ReadString('\n')
 		if err != nil {
 			fmt.Println("Ошибка ввода:", err)
 			continue
 		}
-		modpackChoice = strings.TrimSpace(modpackChoice)
-
-		downloadURL, exists := packs[modpackChoice]
-		if !exists {
+		modpackChoice, err := strconv.Atoi(strings.TrimSpace(userInput))
+		if err != nil || modpackChoice < 1 || modpackChoice > (len(packs)+len(localPacks)) {
 			fmt.Println("Неверный ввод.")
 			fmt.Println("\nНажмите Enter чтобы продолжить...")
 			if _, err := reader.ReadString('\n'); err != nil {
 			}
 			continue
 		}
+		modpackChoice -= 1 // Convert to 0-based index
+
+		var downloadURL string
+		if modpackChoice >= len(packs) {
+			downloadURL = localPacks[modpackChoice-len(packs)]
+		} else {
+			downloadURL = packs[modpackChoice]
+		}
+
 		internal.ClearScreen()
 
 		if err := install(downloadURL); err != nil {
 			fmt.Println("Ошибка установки:", err)
+
+			fmt.Println("Попробуйте скачать сборку вручную и поместить его в папку с загрузчиком (майнкрафта).")
+			fmt.Println("Ссылка для скачивания:", downloadURL)
 		}
 		break
 	}
@@ -76,15 +107,18 @@ func install(downloadURL string) error {
 	}
 
 	tmp := "pack.zip"
-	fmt.Print("Скачиваю pack.zip... ")
-	if err := internal.DownloadFile(downloadURL, tmp); err != nil {
-		fmt.Println("Ошибка:", err)
-		return err
+	if strings.HasPrefix(downloadURL, "http") {
+		fmt.Print("Скачиваю pack.zip... ")
+		if err := internal.DownloadFile(downloadURL, tmp); err != nil {
+			return err
+		}
+		defer func() {
+			_ = os.Remove(tmp)
+		}()
+	} else {
+		tmp = downloadURL
+		fmt.Println("Использую локальный файл:", tmp)
 	}
-	fmt.Println("OK")
-	defer func() {
-		_ = os.Remove(tmp)
-	}()
 
 	// Inspect zip for optional groups
 	groups, err := internal.InspectOptionalGroups(tmp)
@@ -137,7 +171,6 @@ func install(downloadURL string) error {
 		fmt.Println("Ошибка:", err)
 		return err
 	}
-	fmt.Println("OK")
 
 	fmt.Println("Готово! Сборка установлена.")
 
