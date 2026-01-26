@@ -12,7 +12,7 @@ func InspectOptionalGroups(zipPath string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = r.Close() }()
+	defer r.Close()
 
 	set := map[string]struct{}{}
 	for _, f := range r.File {

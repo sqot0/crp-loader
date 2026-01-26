@@ -112,9 +112,7 @@ func install(downloadURL string) error {
 		if err := internal.DownloadFile(downloadURL, tmp); err != nil {
 			return err
 		}
-		defer func() {
-			_ = os.Remove(tmp)
-		}()
+		defer os.Remove(tmp)
 	} else {
 		tmp = downloadURL
 		fmt.Println("Использую локальный файл:", tmp)

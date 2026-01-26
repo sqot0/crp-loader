@@ -15,13 +15,13 @@ func DownloadFile(url, filepathDst string) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer resp.Body.Close()
 
 	out, err := os.Create(filepathDst)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = out.Close() }()
+	defer out.Close()
 
 	bar := progressbar.DefaultBytes(
 		resp.ContentLength,

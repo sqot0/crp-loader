@@ -2,10 +2,14 @@ package internal
 
 import (
 	"archive/zip"
+	"bufio"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+
+	"github.com/schollz/progressbar/v3"
 )
 
 // ExtractSelectedFromZip extracts only necessary files from the archive to dest.
@@ -22,8 +26,15 @@ func ExtractSelectedFromZip(zipPath, dest string, selectedGroups []string) error
 	if err != nil {
 		return err
 	}
-	defer func() { _ = r.Close() }()
+	defer r.Close()
 
+	// Pre-scan to collect files to extract and total size for progress
+	type fileInfo struct {
+		file       *zip.File
+		targetPath string
+	}
+	var filesToExtract []fileInfo
+	var totalSize int64
 	for _, f := range r.File {
 		name := f.Name
 		// normalize
@@ -36,96 +47,87 @@ func ExtractSelectedFromZip(zipPath, dest string, selectedGroups []string) error
 			continue
 		}
 
-		// Mandatory: everything under modpack/mods/
+		shouldExtract := false
+		rel := ""
 		if strings.HasPrefix(name, "modpack/mods/") {
-			rel := strings.TrimPrefix(name, "modpack/")
-			targetPath := filepath.Join(dest, filepath.FromSlash(rel))
-			if f.FileInfo().IsDir() {
-				if err := os.MkdirAll(targetPath, 0755); err != nil {
-					return err
-				}
-				continue
-			}
-
-			// create parent dirs
-			if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
-				return err
-			}
-
-			rc, err := f.Open()
-			if err != nil {
-				return err
-			}
-			written, copyErr := copyFileContents(rc, targetPath)
-			closeErr := rc.Close()
-			if copyErr != nil {
-				return copyErr
-			}
-			if closeErr != nil {
-				return closeErr
-			}
-			_ = written
-			continue
-		}
-
-		// Optionals: modpack/optional/<group>/...
-		if strings.HasPrefix(name, "modpack/optional/") {
+			shouldExtract = true
+			rel = strings.TrimPrefix(name, "modpack/")
+		} else if strings.HasPrefix(name, "modpack/optional/") {
 			rest := strings.TrimPrefix(name, "modpack/optional/")
 			parts := strings.SplitN(rest, "/", 2)
-			if len(parts) == 0 || parts[0] == "" {
-				continue
-			}
-			group := parts[0]
-			if _, ok := selected[group]; !ok {
-				continue // not selected
-			}
-
-			// target path should remove the modpack/optional/<group>/ prefix
-			rel := ""
-			if len(parts) == 2 {
-				rel = parts[1]
-			} else {
-				// directory entry for the group itself
-				rel = ""
-			}
-
-			if rel == "" {
-				// ensure the destination dir exists (no-op)
-				if err := os.MkdirAll(dest, 0755); err != nil {
-					return err
+			if len(parts) > 0 && parts[0] != "" {
+				if _, ok := selected[parts[0]]; ok {
+					shouldExtract = true
+					if len(parts) == 2 {
+						rel = parts[1]
+					}
 				}
-				continue
 			}
-
-			targetPath := filepath.Join(dest, filepath.FromSlash(rel))
-			if f.FileInfo().IsDir() {
-				if err := os.MkdirAll(targetPath, 0755); err != nil {
-					return err
-				}
-				continue
-			}
-
-			if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
-				return err
-			}
-
-			rc, err := f.Open()
-			if err != nil {
-				return err
-			}
-			written, copyErr := copyFileContents(rc, targetPath)
-			closeErr := rc.Close()
-			if copyErr != nil {
-				return copyErr
-			}
-			if closeErr != nil {
-				return closeErr
-			}
-			_ = written
-			continue
 		}
 
-		// ignore other entries
+		if shouldExtract && !f.FileInfo().IsDir() && rel != "" {
+			targetPath := filepath.Join(dest, filepath.FromSlash(rel))
+			filesToExtract = append(filesToExtract, fileInfo{file: f, targetPath: targetPath})
+			totalSize += int64(f.UncompressedSize64)
+		}
+	}
+
+	// Create progress bar
+	bar := progressbar.DefaultBytes(totalSize, "Распаковка")
+	var mu sync.Mutex
+
+	// First pass: Create all directories
+	for _, fi := range filesToExtract {
+		if err := os.MkdirAll(filepath.Dir(fi.targetPath), 0755); err != nil {
+			return err
+		}
+	}
+
+	// Second pass: Extract files with worker pool
+	var wg sync.WaitGroup
+	errChan := make(chan error, len(filesToExtract))
+	taskChan := make(chan fileInfo, len(filesToExtract))
+
+	numWorkers := 4
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for fi := range taskChan {
+				rc, err := fi.file.Open()
+				if err != nil {
+					errChan <- err
+					continue
+				}
+				written, copyErr := copyFileContents(rc, fi.targetPath)
+				closeErr := rc.Close()
+				if copyErr != nil {
+					errChan <- copyErr
+					continue
+				}
+				if closeErr != nil {
+					errChan <- closeErr
+					continue
+				}
+				mu.Lock()
+				bar.Add(int(written))
+				mu.Unlock()
+				errChan <- nil
+			}
+		}()
+	}
+
+	for _, fi := range filesToExtract {
+		taskChan <- fi
+	}
+	close(taskChan)
+
+	wg.Wait()
+	close(errChan)
+	for err := range errChan {
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -136,8 +138,11 @@ func copyFileContents(rc io.ReadCloser, targetPath string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer func() { _ = out.Close() }()
+	defer out.Close()
 
-	written, err := io.Copy(out, rc)
+	bufWriter := bufio.NewWriter(out)
+	defer bufWriter.Flush()
+
+	written, err := io.Copy(bufWriter, rc)
 	return written, err
 }
