@@ -3,14 +3,14 @@ version: 2
 project_name: crp-loader
 
 builds:
-    - main: ./cmd/main.go
-      goos:
-          - windows
-          - darwin
-      goarch:
-          - amd64
-          - arm64
+  - main: ./cmd/main.go
+    goos:
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
 
 archives:
-    - formats: ["tar.gz"]
-      name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+  - formats: ["zip"]
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
