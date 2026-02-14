@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -15,11 +14,6 @@ import (
 func main() {
 	reader := bufio.NewReader(os.Stdin)
 
-	packs := []string{
-		"https://pub-7ac6523b994b44f9b233ee0cbd3afccc.r2.dev/main.zip",
-		"https://pub-7ac6523b994b44f9b233ee0cbd3afccc.r2.dev/war.zip",
-	}
-
 	executable, err := os.Executable()
 	if err != nil {
 		fmt.Println("Ошибка определения пути:", err)
@@ -27,7 +21,19 @@ func main() {
 	}
 	mcDir := path.Dir(executable)
 
-	localPacks := []string{}
+	packs := map[string]string{
+		"Основная сборка": "https://pub-7ac6523b994b44f9b233ee0cbd3afccc.r2.dev/main.zip",
+		"Военная сборка":  "https://pub-7ac6523b994b44f9b233ee0cbd3afccc.r2.dev/war.zip",
+	}
+
+	premiumFile := path.Join(mcDir, "premium.txt")
+	packNames := []string{"Основная сборка", "Военная сборка"}
+	if _, err := os.Stat(premiumFile); err == nil {
+		packs["Премиум сборка - ТРП"] = "https://pub-7ac6523b994b44f9b233ee0cbd3afccc.r2.dev/premium.zip"
+		packNames = append(packNames, "Премиум сборка - ТРП")
+	}
+
+	var localPacks []string
 
 	for _, packURL := range packs {
 		localFile := path.Join(mcDir, path.Base(packURL))
@@ -47,10 +53,11 @@ func main() {
 		fmt.Print("\n\n")
 		fmt.Println("Выберите сборку:")
 		fmt.Println("")
-		fmt.Println("1) Основная сборка")
-		fmt.Println("2) Военная сборка")
+		for i, name := range packNames {
+			fmt.Printf("%d) %s\n", i+1, name)
+		}
 		for i, name := range localPacks {
-			fmt.Printf("%d) %s (Локально)\n", len(packs)+i+1, name)
+			fmt.Printf("%d) %s (Локально)\n", len(packNames)+i+1, name)
 		}
 		fmt.Println("")
 		fmt.Print("Введите номер: ")
@@ -61,20 +68,20 @@ func main() {
 			continue
 		}
 		modpackChoice, err := strconv.Atoi(strings.TrimSpace(userInput))
-		if err != nil || modpackChoice < 1 || modpackChoice > (len(packs)+len(localPacks)) {
+		if err != nil || modpackChoice < 1 || modpackChoice > (len(packNames)+len(localPacks)) {
 			fmt.Println("Неверный ввод.")
 			fmt.Println("\nНажмите Enter чтобы продолжить...")
 			if _, err := reader.ReadString('\n'); err != nil {
 			}
 			continue
 		}
-		modpackChoice -= 1 // Convert to 0-based index
+		modpackChoice -= 1
 
 		var downloadURL string
-		if modpackChoice >= len(packs) {
-			downloadURL = localPacks[modpackChoice-len(packs)]
+		if modpackChoice >= len(packNames) {
+			downloadURL = localPacks[modpackChoice-len(packNames)]
 		} else {
-			downloadURL = packs[modpackChoice]
+			downloadURL = packs[packNames[modpackChoice]]
 		}
 
 		internal.ClearScreen()
@@ -128,7 +135,6 @@ func install(downloadURL string) error {
 	selected := []string{}
 	if len(groups) > 0 {
 		fmt.Println("\nНайдены опциональные наборы (optional):")
-		sort.Strings(groups)
 		for i, g := range groups {
 			fmt.Printf("%d) %s\n", i+1, g)
 		}
