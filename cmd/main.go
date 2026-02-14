@@ -132,7 +132,7 @@ func install(downloadURL string) error {
 		return err
 	}
 
-	selected := []string{}
+	var selected []string
 	if len(groups) > 0 {
 		fmt.Println("\nНайдены опциональные наборы (optional):")
 		for i, g := range groups {
