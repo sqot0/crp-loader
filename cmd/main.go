@@ -5,107 +5,125 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"strconv"
-	"strings"
+	"sort"
+	"sync"
 
 	"github.com/sqot0/crp-loader/internal"
+	"github.com/sqot0/crp-loader/internal/manifest"
+	"github.com/sqot0/crp-loader/internal/prompt"
+	"github.com/sqot0/crp-loader/internal/terminal"
 )
+
+const baseURL = "https://pub-7ac6523b994b44f9b233ee0cbd3afccc.r2.dev/"
 
 func main() {
 	reader := bufio.NewReader(os.Stdin)
 
-	executable, err := os.Executable()
+	mf, err := manifest.GetManifest(baseURL)
 	if err != nil {
-		fmt.Println("Ошибка определения пути:", err)
+		fmt.Println("Ошибка получения манифеста:", err)
 		return
 	}
-	mcDir := path.Dir(executable)
 
-	packs := map[string]string{
-		"Основная сборка": "https://pub-7ac6523b994b44f9b233ee0cbd3afccc.r2.dev/main.zip",
-		"Военная сборка":  "https://pub-7ac6523b994b44f9b233ee0cbd3afccc.r2.dev/war.zip",
+	terminal.ClearScreen()
+
+	fmt.Println("   ____ ____  ____    _     ___    _    ____  _____ ____")
+	fmt.Println("  / ___|  _ \\|  _ \\  | |   / _ \\  / \\  |  _ \\| ____|  _ \\")
+	fmt.Println(" | |   | |_) | |_) | | |  | | | |/ _ \\ | | | |  _| | |_) |")
+	fmt.Println(" | |___|  _ <|  __/  | |__| |_| / ___ \\| |_| | |___|  _ <")
+	fmt.Println("  \\____|_| \\_\\_|     |_____\\___/_/   \\_\\____/|_____|_| \\_\\")
+	fmt.Print("\n\n")
+
+	var modpacks []manifest.ModpackInfo
+	for _, mp := range mf.Modpacks {
+		modpacks = append(modpacks, mp)
+	}
+	sort.Slice(modpacks, func(i, j int) bool {
+		return modpacks[i].Priority < modpacks[j].Priority
+	})
+	modpackNames := make([]string, 0, len(modpacks))
+	for _, mp := range modpacks {
+		modpackNames = append(modpackNames, mp.Name)
 	}
 
-	premiumFile := path.Join(mcDir, "premium.txt")
-	packNames := []string{"Основная сборка", "Военная сборка"}
-	if _, err := os.Stat(premiumFile); err == nil {
-		packs["Премиум сборка - ТРП"] = "https://pub-7ac6523b994b44f9b233ee0cbd3afccc.r2.dev/premium.zip"
-		packNames = append(packNames, "Премиум сборка - ТРП")
+	selectedName, err := prompt.Select(modpackNames)
+	if err != nil {
+		fmt.Println("Ошибка выбора:", err)
+		return
 	}
 
-	var localPacks []string
+	terminal.ClearScreen()
 
-	for _, packURL := range packs {
-		localFile := path.Join(mcDir, path.Base(packURL))
-		if _, err := os.Stat(localFile); err == nil {
-			localPacks = append(localPacks, localFile)
-		}
+	if selectedName == "" {
+		fmt.Println("Ошибка выбора: Вы не выбрали сборку")
+		return
 	}
 
-	for {
-		internal.ClearScreen()
+	chosenPackKey, chosenPack := mf.GetModpackByName(selectedName)
+	if chosenPack == nil {
+		fmt.Println("Ошибка выбора: Сборка не найдена в манифесте")
+		return
+	}
 
-		fmt.Println("   ____ ____  ____    _     ___    _    ____  _____ ____")
-		fmt.Println("  / ___|  _ \\|  _ \\  | |   / _ \\  / \\  |  _ \\| ____|  _ \\")
-		fmt.Println(" | |   | |_) | |_) | | |  | | | |/ _ \\ | | | |  _| | |_) |")
-		fmt.Println(" | |___|  _ <|  __/  | |__| |_| / ___ \\| |_| | |___|  _ <")
-		fmt.Println("  \\____|_| \\_\\_|     |_____\\___/_/   \\_\\____/|_____|_| \\_\\")
-		fmt.Print("\n\n")
-		fmt.Println("Выберите сборку:")
-		fmt.Println("")
-		for i, name := range packNames {
-			fmt.Printf("%d) %s\n", i+1, name)
-		}
-		for i, name := range localPacks {
-			fmt.Printf("%d) %s (Локально)\n", len(packNames)+i+1, name)
-		}
-		fmt.Println("")
-		fmt.Print("Введите номер: ")
+	selectedOptionals := make([]string, 0)
 
-		userInput, err := reader.ReadString('\n')
+	if len(chosenPack.Optionals) > 0 {
+		displayStrings := make([]string, len(chosenPack.Optionals))
+		for i, optKey := range chosenPack.Optionals {
+			opt := mf.Optionals[optKey]
+			displayStrings[i] = opt.Name + "\n" + opt.Description
+		}
+		selectedIndices, err := prompt.Multiselect(displayStrings)
 		if err != nil {
-			fmt.Println("Ошибка ввода:", err)
-			continue
-		}
-		modpackChoice, err := strconv.Atoi(strings.TrimSpace(userInput))
-		if err != nil || modpackChoice < 1 || modpackChoice > (len(packNames)+len(localPacks)) {
-			fmt.Println("Неверный ввод.")
-			fmt.Println("\nНажмите Enter чтобы продолжить...")
-			if _, err := reader.ReadString('\n'); err != nil {
-			}
-			continue
-		}
-		modpackChoice -= 1
-
-		var downloadURL string
-		if modpackChoice >= len(packNames) {
-			downloadURL = localPacks[modpackChoice-len(packNames)]
-		} else {
-			downloadURL = packs[packNames[modpackChoice]]
+			fmt.Println("Ошибка выбора опциональных наборов:", err)
+			return
 		}
 
-		internal.ClearScreen()
-
-		if err := install(downloadURL); err != nil {
-			fmt.Println("Ошибка установки:", err)
-
-			fmt.Println("Попробуйте скачать сборку вручную и поместить его в папку с загрузчиком (майнкрафта).")
-			fmt.Println("Ссылка для скачивания:", downloadURL)
+		for _, idx := range selectedIndices {
+			selectedOptionals = append(selectedOptionals, chosenPack.Optionals[idx])
 		}
-		break
+
+		terminal.ClearScreen()
 	}
 
-	if _, readerErr := reader.ReadString('\n'); readerErr != nil {
-		// ignore
+	type DownloadTask struct {
+		ID   string
+		URL  string
+		SHA1 string
+		Name string
 	}
-}
 
-func install(downloadURL string) error {
-	reader := bufio.NewReader(os.Stdin)
+	tasks := []DownloadTask{}
+	tasks = append(tasks, DownloadTask{
+		ID:   chosenPackKey,
+		URL:  baseURL + chosenPackKey + ".zip",
+		SHA1: chosenPack.SHA1,
+		Name: "Сборка: " + chosenPack.Name,
+	})
+	for _, optKey := range selectedOptionals {
+		opt := mf.Optionals[optKey]
+		tasks = append(tasks, DownloadTask{
+			ID:   optKey,
+			URL:  baseURL + "optionals/" + optKey + ".zip",
+			SHA1: opt.SHA1,
+			Name: "Опционально: " + opt.Name,
+		})
+	}
+
+	progressChan := make(chan internal.ProgressUpdate, len(tasks)*5)
+	installTasks := make([]*prompt.InstallTask, 0, len(tasks))
+	for _, task := range tasks {
+		installTasks = append(installTasks, &prompt.InstallTask{
+			ID:     task.ID,
+			Name:   task.Name,
+			Status: internal.StatusWaiting,
+		})
+	}
 
 	executable, err := os.Executable()
 	if err != nil {
-		return err
+		fmt.Println("Ошибка определения пути к исполняемому файлу:", err)
+		return
 	}
 	mcDir := path.Dir(executable)
 
@@ -113,70 +131,25 @@ func install(downloadURL string) error {
 		// ignore
 	}
 
-	tmp := "pack.zip"
-	if strings.HasPrefix(downloadURL, "http") {
-		fmt.Print("Скачиваю pack.zip... ")
-		if err := internal.DownloadFile(downloadURL, tmp); err != nil {
-			return err
-		}
-		defer os.Remove(tmp)
-	} else {
-		tmp = downloadURL
-		fmt.Println("Использую локальный файл:", tmp)
+	var wg sync.WaitGroup
+	wg.Add(len(tasks))
+	for _, task := range tasks {
+		go func(t DownloadTask) {
+			defer wg.Done()
+			internal.Install(t.ID, t.URL, t.SHA1, progressChan)
+		}(task)
 	}
 
-	// Inspect zip for optional groups
-	groups, err := internal.InspectOptionalGroups(tmp)
-	if err != nil {
-		fmt.Println("Не удалось просканировать zip:", err)
-		return err
+	go func() {
+		wg.Wait()
+		close(progressChan)
+	}()
+
+	if err := prompt.RunProgress(installTasks, progressChan); err != nil {
+		fmt.Println("Ошибка UI:", err)
+		return
 	}
 
-	var selected []string
-	if len(groups) > 0 {
-		fmt.Println("\nНайдены опциональные наборы (optional):")
-		for i, g := range groups {
-			fmt.Printf("%d) %s\n", i+1, g)
-		}
-		fmt.Println("Введите номера наборов через запятую (например: 1,3) или 'all' для всех, пустая строка для пропуска:")
-		fmt.Print("Выбор: ")
-		choice, err := reader.ReadString('\n')
-		if err != nil {
-			choice = ""
-		} else {
-			choice = strings.TrimSpace(choice)
-		}
-		if choice == "all" || choice == "ALL" {
-			selected = append(selected, groups...)
-		} else if choice != "" {
-			for _, part := range strings.Split(choice, ",") {
-				part = strings.TrimSpace(part)
-				if part == "" {
-					continue
-				}
-				n, err := strconv.Atoi(part)
-				if err != nil {
-					fmt.Println("Неверный номер:", part)
-					continue
-				}
-				if n >= 1 && n <= len(groups) {
-					selected = append(selected, groups[n-1])
-				} else {
-					fmt.Println("Номер вне диапазона:", n)
-				}
-			}
-		}
-	} else {
-		fmt.Println("Опциональные наборы не найдены в архиве.")
-	}
-
-	fmt.Print("Распаковываю выбранные файлы... ")
-	if err := internal.ExtractSelectedFromZip(tmp, mcDir, selected); err != nil {
-		fmt.Println("Ошибка:", err)
-		return err
-	}
-
-	fmt.Println("Готово! Сборка установлена.")
-
-	return nil
+	fmt.Println("\nНажмите Enter для выхода")
+	_, _ = reader.ReadString('\n')
 }

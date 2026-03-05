@@ -1,11 +1,9 @@
-package internal
+package fs
 
 import (
 	"io"
 	"net/http"
 	"os"
-
-	"github.com/schollz/progressbar/v3"
 )
 
 // DownloadFile downloads url to filepathDst (overwrites if exists)
@@ -23,10 +21,6 @@ func DownloadFile(url, filepathDst string) error {
 	}
 	defer out.Close()
 
-	bar := progressbar.DefaultBytes(
-		resp.ContentLength,
-		"Установка")
-
-	_, err = io.Copy(io.MultiWriter(out, bar), resp.Body)
+	_, err = io.Copy(out, resp.Body)
 	return err
 }
