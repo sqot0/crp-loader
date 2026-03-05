@@ -108,7 +108,7 @@ func (m multiModel) View() tea.View {
 			}
 		}
 	}
-	b.WriteString("\n" + m.styles.help.Render("↑ ↓ — навигация • Space — отметить • Enter — выбрать"))
+	b.WriteString("\n" + m.styles.help.Render("↑ ↓ — навигация • Пробел — отметить • Enter — выбрать"))
 	return tea.NewView(b.String())
 }
 
