@@ -115,7 +115,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() tea.View {
-	return tea.NewView("\n" + m.list.View() + "\n" + m.styles.help.Render("Используйте стрелки для навигации и Enter для выбора"))
+	return tea.NewView("\n" + m.list.View() + "\n" + m.styles.help.Render("↑ ↓ — навигация • Enter — выбрать"))
 }
 
 func Select(choices []string) (string, error) {
