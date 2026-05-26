@@ -24,8 +24,8 @@ type Manifest struct {
 	Optionals map[string]OptionalInfo `json:"optionals"`
 }
 
-func GetManifest(baseURL string) (*Manifest, error) {
-	url := baseURL + "manifest.json"
+func GetManifest(serverURL string) (*Manifest, error) {
+	url := serverURL + "manifest.json"
 	req, _ := http.NewRequest("GET", url, nil)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

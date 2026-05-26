@@ -61,7 +61,7 @@ type model struct {
 	quitting bool
 }
 
-func initialModel(choices []string) model {
+func initialModel(choices []string, title string) model {
 	items := make([]Item, len(choices))
 	for i, c := range choices {
 		items[i] = item(c)
@@ -70,7 +70,7 @@ func initialModel(choices []string) model {
 	const defaultWidth = 20
 
 	l := New(items, itemDelegate{}, defaultWidth, listHeight)
-	l.Title = "Выберите сборку:"
+	l.Title = title
 	l.SetShowStatusBar(false)
 	l.SetFilteringEnabled(false)
 	l.SetShowHelp(false)
@@ -118,8 +118,8 @@ func (m model) View() tea.View {
 	return tea.NewView("\n" + m.list.View() + "\n" + m.styles.help.Render("↑ ↓ — навигация • Enter — выбрать"))
 }
 
-func Select(choices []string) (string, error) {
-	finalModel, err := tea.NewProgram(initialModel(choices)).Run()
+func Select(choices []string, title string) (string, error) {
+	finalModel, err := tea.NewProgram(initialModel(choices, title)).Run()
 	if err != nil {
 		return "", err
 	}

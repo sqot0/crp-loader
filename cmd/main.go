@@ -9,17 +9,72 @@ import (
 	"sync"
 
 	"github.com/sqot0/crp-loader/internal"
+	"github.com/sqot0/crp-loader/internal/config"
 	"github.com/sqot0/crp-loader/internal/manifest"
 	"github.com/sqot0/crp-loader/internal/prompt"
 	"github.com/sqot0/crp-loader/internal/terminal"
 )
 
-const baseURL = "https://pub-7ac6523b994b44f9b233ee0cbd3afccc.r2.dev/"
+const (
+	globalBaseURL = "https://pub-7ac6523b994b44f9b233ee0cbd3afccc.r2.dev/"
+	russiaBaseURL = "https://crpminecraft.s3.cloud.ru/"
+)
+
+type ServerOption struct {
+	Name string
+	URL  string
+}
 
 func main() {
-	reader := bufio.NewReader(os.Stdin)
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Println("Ошибка загрузки конфигурации:", err)
+		return
+	}
 
-	mf, err := manifest.GetManifest(baseURL)
+	var serverURL string
+
+	if cfg == nil {
+		serverOptions := []ServerOption{
+			{
+				Name: "Для России",
+				URL:  russiaBaseURL,
+			},
+			{
+				Name: "Для всего мира",
+				URL:  globalBaseURL,
+			},
+		}
+
+		displayOptions := make([]string, 0, len(serverOptions))
+		for _, option := range serverOptions {
+			displayOptions = append(displayOptions, option.Name)
+		}
+
+		terminal.DisplayLogo()
+
+		selectedServer, err := prompt.Select(displayOptions, "Выберите сервер для скачивания:")
+		if err != nil {
+			fmt.Println("Ошибка выбора сервера для скачивания:", err)
+			return
+		}
+
+		for _, option := range serverOptions {
+			if option.Name == selectedServer {
+				serverURL = option.URL
+				err := config.Save(&config.Config{ServerURL: serverURL})
+				if err != nil {
+					fmt.Println("Ошибка сохранения конфигурации:", err)
+					return
+				}
+				break
+			}
+		}
+	} else {
+		serverURL = cfg.ServerURL
+	}
+
+	mf, err := manifest.GetManifest(serverURL)
 	if err != nil {
 		fmt.Println("Ошибка получения манифеста:", err)
 		return
@@ -27,12 +82,7 @@ func main() {
 
 	terminal.ClearScreen()
 
-	fmt.Println("   ____ ____  ____    _     ___    _    ____  _____ ____")
-	fmt.Println("  / ___|  _ \\|  _ \\  | |   / _ \\  / \\  |  _ \\| ____|  _ \\")
-	fmt.Println(" | |   | |_) | |_) | | |  | | | |/ _ \\ | | | |  _| | |_) |")
-	fmt.Println(" | |___|  _ <|  __/  | |__| |_| / ___ \\| |_| | |___|  _ <")
-	fmt.Println("  \\____|_| \\_\\_|     |_____\\___/_/   \\_\\____/|_____|_| \\_\\")
-	fmt.Print("\n\n")
+	terminal.DisplayLogo()
 
 	var modpacks []manifest.ModpackInfo
 	for _, mp := range mf.Modpacks {
@@ -46,7 +96,7 @@ func main() {
 		modpackNames = append(modpackNames, mp.Name)
 	}
 
-	selectedName, err := prompt.Select(modpackNames)
+	selectedName, err := prompt.Select(modpackNames, "Выберите сборку:")
 	if err != nil {
 		fmt.Println("Ошибка выбора:", err)
 		return
@@ -96,7 +146,7 @@ func main() {
 	tasks := []DownloadTask{}
 	tasks = append(tasks, DownloadTask{
 		ID:   chosenPackKey,
-		URL:  baseURL + chosenPackKey + ".zip",
+		URL:  serverURL + chosenPackKey + ".zip",
 		SHA1: chosenPack.SHA1,
 		Name: "Сборка: " + chosenPack.Name,
 	})
@@ -104,7 +154,7 @@ func main() {
 		opt := mf.Optionals[optKey]
 		tasks = append(tasks, DownloadTask{
 			ID:   optKey,
-			URL:  baseURL + "optionals/" + optKey + ".zip",
+			URL:  serverURL + "optionals/" + optKey + ".zip",
 			SHA1: opt.SHA1,
 			Name: "Опционально: " + opt.Name,
 		})
@@ -151,5 +201,7 @@ func main() {
 	}
 
 	fmt.Println("\nНажмите Enter для выхода")
+
+	reader := bufio.NewReader(os.Stdin)
 	_, _ = reader.ReadString('\n')
 }
